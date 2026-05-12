@@ -13,3 +13,9 @@ iOS/Safari erlaubt nicht immer eine perfekte automatische Auswahl der physischen
 Update:
 - Erfolgreicher Scan spielt nun einen kurzen iPhone-kompatiblen Erfolgs-Sound.
 - Ton wird durch den Start-Button freigeschaltet und nur bei neu abgehakten Teilen gespielt.
+
+
+Update Sound-Fix:
+- Button „Ton testen“ ergänzt.
+- Ton wird auch bei bereits abgehakten Teilen ausgelöst.
+- AudioContext wird per Nutzertipp explizit entsperrt.

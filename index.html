@@ -46,6 +46,7 @@
     <div class="row" style="margin-top:10px">
       <button class="primary" id="startBtn">OCR-Scanner starten</button>
       <button id="stopBtn">Stoppen</button>
+      <button class="ok" id="soundBtn">Ton testen</button>
     </div>
     <div class="row" style="margin-top:8px">
       <select id="cameraSelect"><option value="">Kamera wird beim Start gesucht…</option></select>
@@ -84,20 +85,21 @@ let audioCtx = null;
 let lastSoundAt = 0;
 
 const $ = id => document.getElementById(id);
-function ensureAudio(){
+async function ensureAudio(){
   try{
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    if(!Ctx) return;
+    if(!Ctx) return false;
     if(!audioCtx) audioCtx = new Ctx();
-    if(audioCtx.state === "suspended") audioCtx.resume();
-  } catch(e){}
+    if(audioCtx.state === "suspended") await audioCtx.resume();
+    return audioCtx.state === "running";
+  } catch(e){ return false; }
 }
-function playSuccessSound(){
+async function playSuccessSound(){
   const nowMs = Date.now();
   if(nowMs - lastSoundAt < 1200) return;
   lastSoundAt = nowMs;
-  ensureAudio();
-  if(!audioCtx) return;
+  const ok = await ensureAudio();
+  if(!ok || !audioCtx) return;
   const now = audioCtx.currentTime;
   const master = audioCtx.createGain();
   master.gain.setValueAtTime(0.0001, now);
@@ -162,7 +164,7 @@ function scanValue(raw){
   checked.add(p.nummer); save(); render();
   setMsg((was ? "Schon abgehakt: " : "Abgehakt: ") + p.nummer + " | Charge " + p.charge + " | Härte " + p.haerte + (p.lagerort ? " | " + p.lagerort : ""), was ? "warn" : "ok");
   setScanStatus((was ? "Schon da: " : "Gefunden: ") + p.nummer, was ? "warn" : "ok");
-  if(!was) playSuccessSound();
+  playSuccessSound();
   if(navigator.vibrate) navigator.vibrate(was ? [80,40,80] : 120);
 }
 function render(){
@@ -263,7 +265,7 @@ async function openSelectedCamera(){
 }
 
 async function startScanner(){
-  ensureAudio();
+  await ensureAudio();
   if(scanning) return;
   if(!window.Tesseract){ setMsg("OCR-Bibliothek konnte nicht geladen werden. Internetverbindung prüfen.", "bad"); return; }
   scanning = true;
@@ -361,7 +363,8 @@ function stopScanner(){
   setScanStatus("OCR gestoppt");
 }
 $("startBtn").onclick=startScanner; $("stopBtn").onclick=stopScanner; $("reloadCamerasBtn").onclick=()=>loadCameras(true);
-$("manualBtn").onclick=()=>{ ensureAudio(); scanValue($("manual").value); $("manual").value=""; };
+$("manualBtn").onclick=async()=>{ await ensureAudio(); scanValue($("manual").value); $("manual").value=""; };
+$("soundBtn").onclick=async()=>{ lastSoundAt = 0; await playSuccessSound(); setMsg("Ton-Test ausgelöst. Wenn du nichts hörst: Lautlos-Schalter aus und Medienlautstärke hoch.", "ok"); };
 $("manual").addEventListener("keydown",e=>{ if(e.key==="Enter") $("manualBtn").click(); });
 $("search").oninput=render; $("filter").onchange=render;
 $("resetBtn").onclick=()=>{ if(confirm("Wirklich alle Haken löschen?")){ checked.clear(); save(); render(); setMsg("Alle Haken gelöscht.","warn"); } };
