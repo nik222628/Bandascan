@@ -48,6 +48,10 @@
       <button id="stopBtn">Stoppen</button>
     </div>
     <div class="row" style="margin-top:8px">
+      <select id="cameraSelect"><option value="">Kamera wird beim Start gesucht…</option></select>
+      <button id="reloadCamerasBtn">Kameras neu suchen</button>
+    </div>
+    <div class="row" style="margin-top:8px">
       <input id="manual" inputmode="numeric" placeholder="Nummer/Code manuell eingeben, z. B. 580393">
       <button class="ok" id="manualBtn">Abhaken</button>
     </div>
@@ -146,26 +150,96 @@ function render(){
 }
 window.toggle = function(n){ checked.has(n) ? checked.delete(n) : checked.add(n); save(); render(); };
 
+async function loadCameras(preferUltra=true){
+  const select = $("cameraSelect");
+  select.innerHTML = '<option value="">Kameras werden gesucht…</option>';
+
+  // iOS zeigt Kameranamen oft erst nach einer kurzen Berechtigungsabfrage an.
+  let tempStream = null;
+  try{
+    tempStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}, audio:false});
+  } catch(e){}
+  if(tempStream) tempStream.getTracks().forEach(t=>t.stop());
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cams = devices.filter(d => d.kind === "videoinput");
+
+  if(!cams.length){
+    select.innerHTML = '<option value="">Keine Kamera gefunden</option>';
+    return null;
+  }
+
+  function score(cam){
+    const label = (cam.label || "").toLowerCase();
+    let s = 0;
+    if(/back|rear|rück|environment/.test(label)) s += 20;
+    if(/ultra|0\.5|0,5|wide|weitwinkel/.test(label)) s += 100;
+    if(/front|user|face|vorder/.test(label)) s -= 100;
+    if(/tele|zoom/.test(label)) s -= 50;
+    return s;
+  }
+
+  const sorted = cams.map((cam,i)=>({cam,i,score:score(cam)})).sort((a,b)=>b.score-a.score);
+  const preferredId = preferUltra ? sorted[0].cam.deviceId : cams[0].deviceId;
+
+  select.innerHTML = cams.map((cam,i)=>{
+    const name = cam.label || `Kamera ${i+1}`;
+    const mark = cam.deviceId === preferredId ? " ausgewählt" : "";
+    return `<option value="${cam.deviceId}" ${cam.deviceId===preferredId?"selected":""}>${name}${mark}</option>`;
+  }).join("");
+
+  return preferredId;
+}
+
+async function openSelectedCamera(){
+  let deviceId = $("cameraSelect").value;
+  if(!deviceId){
+    deviceId = await loadCameras(true);
+  }
+
+  const constraints = deviceId ? {
+    video:{
+      deviceId:{exact:deviceId},
+      width:{ideal:1920},
+      height:{ideal:1080},
+      focusMode:{ideal:"continuous"}
+    },
+    audio:false
+  } : {
+    video:{facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}},
+    audio:false
+  };
+
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+  // Falls der Browser Zoom unterstützt: kleinsten Zoom erzwingen = breitester Bildwinkel.
+  const track = stream.getVideoTracks()[0];
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  if(caps.zoom){
+    try{
+      await track.applyConstraints({advanced:[{zoom:caps.zoom.min}]});
+    } catch(e){}
+  }
+
+  return stream;
+}
+
 async function startScanner(){
   if(scanning) return;
   if(!window.Tesseract){ setMsg("OCR-Bibliothek konnte nicht geladen werden. Internetverbindung prüfen.", "bad"); return; }
   scanning = true;
   noResultCounter = 0;
-  setMsg("OCR läuft. Text/Zahlen groß, hell und scharf in den grünen Rahmen halten.");
+  setMsg("OCR läuft. Falls die falsche Linse aktiv ist: Scanner stoppen, andere Kamera im Auswahlfeld wählen, erneut starten.");
   setScanStatus("Suche Text...");
   try{
-    activeStream = await navigator.mediaDevices.getUserMedia({
-      video:{
-        facingMode:{ideal:"environment"},
-        width:{ideal:1920},
-        height:{ideal:1080},
-        focusMode:{ideal:"continuous"}
-      },
-      audio:false
-    });
+    activeStream = await openSelectedCamera();
     const v=$("video");
     v.srcObject = activeStream;
     await v.play();
+
+    const track = activeStream.getVideoTracks()[0];
+    const label = track && track.label ? track.label : "ausgewählte Kamera";
+    setMsg("Aktive Kamera: " + label + ". OCR scannt den grünen Rahmen.");
     setTimeout(runOCRLoop, 500);
   } catch(e){
     scanning=false;
@@ -247,7 +321,7 @@ function stopScanner(){
   setMsg("Scanner gestoppt.");
   setScanStatus("OCR gestoppt");
 }
-$("startBtn").onclick=startScanner; $("stopBtn").onclick=stopScanner;
+$("startBtn").onclick=startScanner; $("stopBtn").onclick=stopScanner; $("reloadCamerasBtn").onclick=()=>loadCameras(true);
 $("manualBtn").onclick=()=>{ scanValue($("manual").value); $("manual").value=""; };
 $("manual").addEventListener("keydown",e=>{ if(e.key==="Enter") $("manualBtn").click(); });
 $("search").oninput=render; $("filter").onchange=render;
@@ -258,6 +332,7 @@ $("exportBtn").onclick=()=>{
   const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="haerteliste_status.csv"; a.click(); URL.revokeObjectURL(a.href);
 };
 render();
+if(navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){ loadCameras(true).catch(()=>{}); }
 </script>
 </body>
 </html>
