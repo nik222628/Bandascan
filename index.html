@@ -80,8 +80,45 @@ let scanning = false;
 let ocrBusy = false;
 let noResultCounter = 0;
 let activeStream = null;
+let audioCtx = null;
+let lastSoundAt = 0;
 
 const $ = id => document.getElementById(id);
+function ensureAudio(){
+  try{
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return;
+    if(!audioCtx) audioCtx = new Ctx();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+  } catch(e){}
+}
+function playSuccessSound(){
+  const nowMs = Date.now();
+  if(nowMs - lastSoundAt < 1200) return;
+  lastSoundAt = nowMs;
+  ensureAudio();
+  if(!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const master = audioCtx.createGain();
+  master.gain.setValueAtTime(0.0001, now);
+  master.gain.exponentialRampToValueAtTime(0.22, now + 0.015);
+  master.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+  master.connect(audioCtx.destination);
+  [880, 1320].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const t = now + i * 0.12;
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(1, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(t);
+    osc.stop(t + 0.18);
+  });
+}
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify([...checked])); }
 function setMsg(text, cls=""){ const el=$("msg"); el.className="msg "+cls; el.textContent=text; }
 function setScanStatus(text, cls=""){ const el=$("scanStatus"); el.className="scan-status "+cls; el.textContent=text; }
@@ -125,6 +162,7 @@ function scanValue(raw){
   checked.add(p.nummer); save(); render();
   setMsg((was ? "Schon abgehakt: " : "Abgehakt: ") + p.nummer + " | Charge " + p.charge + " | Härte " + p.haerte + (p.lagerort ? " | " + p.lagerort : ""), was ? "warn" : "ok");
   setScanStatus((was ? "Schon da: " : "Gefunden: ") + p.nummer, was ? "warn" : "ok");
+  if(!was) playSuccessSound();
   if(navigator.vibrate) navigator.vibrate(was ? [80,40,80] : 120);
 }
 function render(){
@@ -225,6 +263,7 @@ async function openSelectedCamera(){
 }
 
 async function startScanner(){
+  ensureAudio();
   if(scanning) return;
   if(!window.Tesseract){ setMsg("OCR-Bibliothek konnte nicht geladen werden. Internetverbindung prüfen.", "bad"); return; }
   scanning = true;
@@ -322,7 +361,7 @@ function stopScanner(){
   setScanStatus("OCR gestoppt");
 }
 $("startBtn").onclick=startScanner; $("stopBtn").onclick=stopScanner; $("reloadCamerasBtn").onclick=()=>loadCameras(true);
-$("manualBtn").onclick=()=>{ scanValue($("manual").value); $("manual").value=""; };
+$("manualBtn").onclick=()=>{ ensureAudio(); scanValue($("manual").value); $("manual").value=""; };
 $("manual").addEventListener("keydown",e=>{ if(e.key==="Enter") $("manualBtn").click(); });
 $("search").oninput=render; $("filter").onchange=render;
 $("resetBtn").onclick=()=>{ if(confirm("Wirklich alle Haken löschen?")){ checked.clear(); save(); render(); setMsg("Alle Haken gelöscht.","warn"); } };

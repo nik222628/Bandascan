@@ -8,3 +8,8 @@ Bandascan OCR – Version mit Kamera-Auswahl
 
 Hinweis:
 iOS/Safari erlaubt nicht immer eine perfekte automatische Auswahl der physischen iPhone-Linse. Die manuelle Kameraauswahl ist deshalb die zuverlässigste Lösung.
+
+
+Update:
+- Erfolgreicher Scan spielt nun einen kurzen iPhone-kompatiblen Erfolgs-Sound.
+- Ton wird durch den Start-Button freigeschaltet und nur bei neu abgehakten Teilen gespielt.
