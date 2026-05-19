@@ -1,0 +1,10 @@
+{
+  "name": "Part Counter",
+  "short_name": "Counter",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait",
+  "icons": []
+}
